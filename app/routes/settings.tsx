@@ -1,4 +1,4 @@
-import { use, useEffect, useRef, useState } from "react"
+import { use, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { useOutletContext } from "react-router"
 import { useReactToPrint } from "react-to-print"
@@ -12,12 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { checkStoragePersistence, useSyncStatus } from "@/lib/sync"
+import { useSyncStatus } from "@/lib/sync"
 import { getSplitConfig } from "@/features/training/splits/split-registry"
 import { getAllSessionsWithSets, getBackupSnapshot } from "@/lib/training-db"
 import type { SplitType } from "@/lib/training-types"
 import type { AppLayoutContextValue } from "@/routes/app-layout"
-import { AuthContext } from "@/lib/auth-context-store"
+import { AuthContext } from "@/lib/auth-context/store"
 
 function downloadTextFile(filename: string, content: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType })
@@ -97,10 +97,6 @@ export function SettingsPage() {
     contentRef: printReportRef,
     documentTitle: `relatorio-treino-${new Date().toISOString().slice(0, 10)}`,
   })
-
-  useEffect(() => {
-    void checkStoragePersistence()
-  }, [])
 
   async function handleSignInWithMagicLink() {
     if (!email.trim()) {

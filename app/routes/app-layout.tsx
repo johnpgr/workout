@@ -29,12 +29,6 @@ export function AppLayout() {
     activeSplitQuery.data?.value === "upper-lower" ? "upper-lower" : "ppl"
 
   useEffect(() => {
-    if (!activeSplitQuery.isPending && !activeSplitQuery.data) {
-      void setSettingMutation.mutateAsync({ key: "active-split", value: "ppl" })
-    }
-  }, [activeSplitQuery.data, activeSplitQuery.isPending, setSettingMutation])
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       return
     }

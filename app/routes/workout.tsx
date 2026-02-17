@@ -1,8 +1,6 @@
 import {
   createContext,
   use,
-  useEffect,
-  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -63,8 +61,6 @@ function WorkoutPageProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<WeekMode>(defaultMode)
   const [selectedDate, setSelectedDate] = useState<string>(todayISO)
 
-  const preferredDateRef = useRef<string | undefined>(undefined)
-
   const effectiveMode = splitConfig.weekModes.includes(mode) ? mode : defaultMode
 
   const weekDates = getWeekDates(weekValue)
@@ -106,8 +102,8 @@ function WorkoutPageProvider({ children }: { children: ReactNode }) {
     }
   )
 
-  useEffect(() => {
-    const currentWeekDates = getWeekDates(weekValue).map((day) =>
+  function setWeekAndSelectedDate(nextWeekValue: string, preferredDate?: string) {
+    const currentWeekDates = getWeekDates(nextWeekValue).map((day) =>
       toISODateString(day)
     )
 
@@ -115,12 +111,10 @@ function WorkoutPageProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    setWeekValue(nextWeekValue)
     setSelectedDate((current) => {
-      const preferred = preferredDateRef.current
-      preferredDateRef.current = undefined
-
-      if (preferred && currentWeekDates.includes(preferred)) {
-        return preferred
+      if (preferredDate && currentWeekDates.includes(preferredDate)) {
+        return preferredDate
       }
 
       if (currentWeekDates.includes(current)) {
@@ -129,17 +123,16 @@ function WorkoutPageProvider({ children }: { children: ReactNode }) {
 
       return currentWeekDates[0] ?? ""
     })
-  }, [weekValue])
+  }
 
   async function saveSession(payload: SaveSessionInput) {
     await addSessionMutation.mutateAsync(payload)
 
-    preferredDateRef.current = payload.session.date
     const parsedDate = parseISODate(payload.session.date)
     const savedWeek = parsedDate ? getISOWeekInputValue(parsedDate) : weekValue
 
     if (savedWeek !== weekValue) {
-      setWeekValue(savedWeek)
+      setWeekAndSelectedDate(savedWeek, payload.session.date)
       return
     }
 
@@ -176,11 +169,13 @@ function WorkoutPageProvider({ children }: { children: ReactNode }) {
     logsByDate,
     isLogsLoading: weekSessionsQuery.isPending,
     logsErrorMessage,
-    isSavingSession: addSessionMutation.isPending,
-    isDeletingLog: deleteSessionMutation.isPending,
-    setWeekValue,
-    setMode,
-    setSelectedDate,
+      isSavingSession: addSessionMutation.isPending,
+      isDeletingLog: deleteSessionMutation.isPending,
+      setWeekValue: (nextWeekValue: string) => {
+        setWeekAndSelectedDate(nextWeekValue)
+      },
+      setMode,
+      setSelectedDate,
     saveSession,
     deleteSession,
   }

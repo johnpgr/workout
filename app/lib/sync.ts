@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react"
 import { Temporal } from "@/lib/temporal"
 import type { Database } from "@/types/database"
 import {
@@ -493,11 +493,14 @@ export function startSyncRuntime() {
 }
 
 export function useSyncStatus() {
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => getSyncStatusSnapshot())
-
-  useEffect(() => {
-    return subscribeSyncStatus(setSyncStatus)
-  }, [])
+  const syncStatus = useSyncExternalStore(
+    (onStoreChange) =>
+      subscribeSyncStatus(() => {
+        onStoreChange()
+      }),
+    getSyncStatusSnapshot,
+    getSyncStatusSnapshot,
+  )
 
   return {
     ...syncStatus,

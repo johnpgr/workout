@@ -1,7 +1,7 @@
 import { createContext } from "react"
 import type { User } from "@supabase/supabase-js"
 
-export interface AuthContextValue {
+export interface AuthContext {
   user: User | null
   isAuthenticated: boolean
   isLoading: boolean
@@ -9,4 +9,4 @@ export interface AuthContextValue {
   signOut: () => Promise<void>
 }
 
-export const AuthContext = createContext<AuthContextValue>({} as AuthContextValue)
+export const AuthContext = createContext<AuthContext>({} as AuthContext)
