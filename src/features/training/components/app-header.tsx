@@ -1,4 +1,4 @@
-import { NavLink } from "react-router"
+import { Link, useRouterState } from "@tanstack/react-router"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { ThemePreference } from "@/features/training/types"
 import type { SplitType } from "@/lib/training-types"
@@ -22,6 +22,15 @@ function navClassName(isActive: boolean): string {
 }
 
 export function AppHeader({ splitType, themePreference, onThemePreferenceChange }: AppHeaderProps) {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
+
+  const isDashboardActive = pathname === "/"
+  const isWorkoutActive = pathname.startsWith("/workout")
+  const isProgressActive = pathname.startsWith("/progress")
+  const isSettingsActive = pathname.startsWith("/settings")
+
   return (
     <header className="space-y-3 text-center">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -48,18 +57,18 @@ export function AppHeader({ splitType, themePreference, onThemePreferenceChange 
       <h1 className="text-3xl font-black tracking-tight sm:text-5xl">Workout OS</h1>
 
       <nav className="mx-auto hidden max-w-xl flex-wrap items-center justify-center gap-2 md:flex">
-        <NavLink to="/" className={({ isActive }) => navClassName(isActive)} end>
+        <Link to="/" className={navClassName(isDashboardActive)}>
           Painel
-        </NavLink>
-        <NavLink to="/workout" className={({ isActive }) => navClassName(isActive)}>
+        </Link>
+        <Link to="/workout" className={navClassName(isWorkoutActive)}>
           Treino
-        </NavLink>
-        <NavLink to="/progress" className={({ isActive }) => navClassName(isActive)}>
+        </Link>
+        <Link to="/progress" className={navClassName(isProgressActive)}>
           Progresso
-        </NavLink>
-        <NavLink to="/settings" className={({ isActive }) => navClassName(isActive)}>
+        </Link>
+        <Link to="/settings" className={navClassName(isSettingsActive)}>
           Configurações
-        </NavLink>
+        </Link>
       </nav>
     </header>
   )

@@ -12,6 +12,10 @@ dist
 dist-ssr
 build
 .react-router
+.tanstack
+.vinxi
+.wrangler
+.output
 *.local
 
 # Editor directories and files

@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react"
-import { Outlet } from "react-router"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { AppFooter } from "@/features/training/components/app-footer"
 import { AppHeader } from "@/features/training/components/app-header"
 import { BottomNav } from "@/features/training/components/bottom-nav"
@@ -9,15 +8,15 @@ import {
   useAppSettingQuery,
   useSetAppSettingMutation,
 } from "@/features/training/queries"
+import { AppLayoutContext } from "src/layouts/app-layout/context"
 import type { ThemePreference } from "@/features/training/types"
 import type { SplitType } from "@/lib/training-types"
 
-export interface AppLayoutContextValue {
-  splitType: SplitType
-  setSplitType: (splitType: SplitType) => Promise<void>
+interface AppLayoutProps {
+  children: ReactNode
 }
 
-export function AppLayout() {
+export function AppLayout({ children }: AppLayoutProps) {
   const activeSplitQuery = useAppSettingQuery("active-split")
   const setSettingMutation = useSetAppSettingMutation()
 
@@ -65,37 +64,42 @@ export function AppLayout() {
     }
   }, [themePreference])
 
+  const contextValue = useMemo<AppLayoutContext>(
+    () => ({
+      splitType,
+      setSplitType: async (nextSplitType: SplitType) => {
+        await setSettingMutation.mutateAsync({
+          key: "active-split",
+          value: nextSplitType,
+        })
+      },
+    }),
+    [setSettingMutation, splitType],
+  )
+
   return (
-    <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 md:gap-8">
-        <AppHeader
-          splitType={splitType}
-          themePreference={themePreference}
-          onThemePreferenceChange={(value) => {
-            setThemePreference(value)
-            void setSettingMutation.mutateAsync({
-              key: "theme-preference",
-              value,
-            })
-          }}
-        />
-
-        <Outlet
-          context={{
-            splitType,
-            setSplitType: async (nextSplitType: SplitType) => {
-              await setSettingMutation.mutateAsync({
-                key: "active-split",
-                value: nextSplitType,
+    <AppLayoutContext.Provider value={contextValue}>
+      <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 md:gap-8">
+          <AppHeader
+            splitType={splitType}
+            themePreference={themePreference}
+            onThemePreferenceChange={(value) => {
+              setThemePreference(value)
+              void setSettingMutation.mutateAsync({
+                key: "theme-preference",
+                value,
               })
-            },
-          }}
-        />
+            }}
+          />
 
-        <AppFooter />
-      </div>
-      <BottomNav />
-    </main>
+          {children}
+
+          <AppFooter />
+        </div>
+        <BottomNav />
+      </main>
+    </AppLayoutContext.Provider>
   )
 }
 

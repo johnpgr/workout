@@ -1,10 +1,6 @@
-import {
-  createContext,
-  use,
-  useState,
-  type ReactNode,
-} from "react"
-import { useOutletContext } from "react-router"
+import { createFileRoute } from "@tanstack/react-router"
+import { AppLayout } from "src/layouts/app-layout"
+import { createContext, use, useState, type ReactNode } from "react"
 import { WeeklyLogsCard } from "@/features/training/components/weekly-logs-card"
 import { WorkoutsSection } from "@/features/training/components/workouts-section"
 import {
@@ -22,10 +18,29 @@ import { getSplitConfig } from "@/features/training/splits/split-registry"
 import type { WeekMode, WeekSummary } from "@/features/training/types"
 import { getCurrentDate } from "@/lib/temporal"
 import type { SaveSessionInput, SessionWithSets } from "@/lib/training-db"
-import type { AppLayoutContextValue } from "@/routes/app-layout"
+import type { SplitType } from "@/lib/training-types"
+import { AppLayoutContext } from "src/layouts/app-layout/context"
 
-interface WorkoutPageContextValue {
-  splitType: AppLayoutContextValue["splitType"]
+export const Route = createFileRoute("/workout")({
+  ssr: false,
+  component: WorkoutRoute,
+})
+
+function WorkoutRoute() {
+  return (
+    <AppLayout>
+      <WorkoutRouteProvider>
+        <section className="space-y-6">
+          <WorkoutRouteLogsSection />
+          <WorkoutRouteFormsSection />
+        </section>
+      </WorkoutRouteProvider>
+    </AppLayout>
+  )
+}
+
+interface WorkoutRouteContext {
+  splitType: SplitType
   workouts: ReturnType<typeof getSplitConfig>["workouts"]
   availableModes: ReturnType<typeof getSplitConfig>["weekModes"]
   effectiveMode: WeekMode
@@ -46,22 +61,26 @@ interface WorkoutPageContextValue {
   deleteSession: (id: string) => Promise<void>
 }
 
-const WorkoutPageContext = createContext<WorkoutPageContextValue>({} as WorkoutPageContextValue)
+const WorkoutRouteContext = createContext<WorkoutRouteContext>(
+  {} as WorkoutRouteContext,
+)
 
-function WorkoutPageProvider({ children }: { children: ReactNode }) {
-  const { splitType } = useOutletContext<AppLayoutContextValue>()
+function WorkoutRouteProvider({ children }: { children: ReactNode }) {
+  const { splitType } = use(AppLayoutContext)
 
   const splitConfig = getSplitConfig(splitType)
   const defaultMode = splitConfig.weekModes[0]
   const todayISO = toISODateString(getCurrentDate())
 
   const [weekValue, setWeekValue] = useState<string>(() =>
-    getISOWeekInputValue(getCurrentDate())
+    getISOWeekInputValue(getCurrentDate()),
   )
   const [mode, setMode] = useState<WeekMode>(defaultMode)
   const [selectedDate, setSelectedDate] = useState<string>(todayISO)
 
-  const effectiveMode = splitConfig.weekModes.includes(mode) ? mode : defaultMode
+  const effectiveMode = splitConfig.weekModes.includes(mode)
+    ? mode
+    : defaultMode
 
   const weekDates = getWeekDates(weekValue)
   const weekDateISOValues = weekDates.map((day) => toISODateString(day))
@@ -99,12 +118,15 @@ function WorkoutPageProvider({ children }: { children: ReactNode }) {
       totalSessions: 0,
       totalMinutes: 0,
       byWorkoutType: {},
-    }
+    },
   )
 
-  function setWeekAndSelectedDate(nextWeekValue: string, preferredDate?: string) {
+  function setWeekAndSelectedDate(
+    nextWeekValue: string,
+    preferredDate?: string,
+  ) {
     const currentWeekDates = getWeekDates(nextWeekValue).map((day) =>
-      toISODateString(day)
+      toISODateString(day),
     )
 
     if (!currentWeekDates.length) {
@@ -156,7 +178,7 @@ function WorkoutPageProvider({ children }: { children: ReactNode }) {
     ? "Não foi possível carregar os registros desta semana."
     : null
 
-  const value: WorkoutPageContextValue = {
+  const value: WorkoutRouteContext = {
     splitType,
     workouts: splitConfig.workouts,
     availableModes: splitConfig.weekModes,
@@ -169,25 +191,25 @@ function WorkoutPageProvider({ children }: { children: ReactNode }) {
     logsByDate,
     isLogsLoading: weekSessionsQuery.isPending,
     logsErrorMessage,
-      isSavingSession: addSessionMutation.isPending,
-      isDeletingLog: deleteSessionMutation.isPending,
-      setWeekValue: (nextWeekValue: string) => {
-        setWeekAndSelectedDate(nextWeekValue)
-      },
-      setMode,
-      setSelectedDate,
+    isSavingSession: addSessionMutation.isPending,
+    isDeletingLog: deleteSessionMutation.isPending,
+    setWeekValue: (nextWeekValue: string) => {
+      setWeekAndSelectedDate(nextWeekValue)
+    },
+    setMode,
+    setSelectedDate,
     saveSession,
     deleteSession,
   }
 
   return (
-    <WorkoutPageContext.Provider value={value}>
+    <WorkoutRouteContext.Provider value={value}>
       {children}
-    </WorkoutPageContext.Provider>
+    </WorkoutRouteContext.Provider>
   )
 }
 
-function WorkoutPageLogsSection() {
+function WorkoutRouteLogsSection() {
   const {
     effectiveMode,
     availableModes,
@@ -203,7 +225,7 @@ function WorkoutPageLogsSection() {
     setMode,
     setSelectedDate,
     deleteSession,
-  } = use(WorkoutPageContext)
+  } = use(WorkoutRouteContext)
 
   return (
     <WeeklyLogsCard
@@ -225,7 +247,7 @@ function WorkoutPageLogsSection() {
   )
 }
 
-function WorkoutPageFormsSection() {
+function WorkoutRouteFormsSection() {
   const {
     selectedDate,
     todayISO,
@@ -233,7 +255,7 @@ function WorkoutPageFormsSection() {
     workouts,
     isSavingSession,
     saveSession,
-  } = use(WorkoutPageContext)
+  } = use(WorkoutRouteContext)
 
   return (
     <WorkoutsSection
@@ -245,16 +267,3 @@ function WorkoutPageFormsSection() {
     />
   )
 }
-
-export function WorkoutPage() {
-  return (
-    <WorkoutPageProvider>
-      <section className="space-y-6">
-        <WorkoutPageLogsSection />
-        <WorkoutPageFormsSection />
-      </section>
-    </WorkoutPageProvider>
-  )
-}
-
-export default WorkoutPage

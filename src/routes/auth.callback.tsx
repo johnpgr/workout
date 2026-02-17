@@ -1,10 +1,16 @@
+import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router"
+import { useNavigate } from "@tanstack/react-router"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { supabase } from "@/lib/supabase"
 import { scheduleSync } from "@/lib/sync"
 
-export function AuthCallbackPage() {
+export const Route = createFileRoute("/auth/callback")({
+  ssr: false,
+  component: AuthCallbackRoute,
+})
+
+function AuthCallbackRoute() {
   const navigate = useNavigate()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -34,7 +40,7 @@ export function AuthCallbackPage() {
         scheduleSync("auth")
 
         if (!cancelled) {
-          navigate("/settings", { replace: true })
+          navigate({ to: "/settings", replace: true })
         }
       } catch (error) {
         if (cancelled) {
@@ -69,5 +75,3 @@ export function AuthCallbackPage() {
     </main>
   )
 }
-
-export default AuthCallbackPage

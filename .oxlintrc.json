@@ -11,6 +11,7 @@
     "dist",
     "build",
     "react-router-framework/**",
+    "tanstack-start/**",
     ".agents/**",
     ".claude/**"
   ],
@@ -138,7 +139,7 @@
     },
     {
       "files": [
-        "app/**/*.tsx"
+        "src/**/*.tsx"
       ],
       "rules": {
         "react/only-export-components": "off"

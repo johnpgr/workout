@@ -1,18 +1,26 @@
-import tailwindcss from "@tailwindcss/vite"
-import { reactRouter } from "@react-router/dev/vite"
-import path from "path"
 import { defineConfig } from "vite"
+import tailwindcss from "@tailwindcss/vite"
+import { tanstackStart } from "@tanstack/react-start/plugin/vite"
+import viteReact from "@vitejs/plugin-react"
+import viteTsConfigPaths from "vite-tsconfig-paths"
 
 export default defineConfig({
   plugins: [
+    viteTsConfigPaths({
+      projects: ["./tsconfig.json"],
+    }),
     tailwindcss(),
-    reactRouter(),
+    tanstackStart({
+      spa: {
+        enabled: true,
+      },
+    }),
+    viteReact({
+      babel: {
+        plugins: ["babel-plugin-react-compiler"],
+      },
+    }),
   ],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./app"),
-    },
-  },
   build: {
     outDir: "dist",
     rollupOptions: {
