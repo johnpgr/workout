@@ -9,6 +9,12 @@ interface AppHeaderProps {
   onThemePreferenceChange: (value: ThemePreference) => void
 }
 
+const THEME_LABELS: Record<ThemePreference, string> = {
+  system: "Tema: Sistema",
+  light: "Tema: Claro",
+  dark: "Tema: Escuro",
+}
+
 function navClassName(isActive: boolean): string {
   return isActive
     ? "rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground"
@@ -28,7 +34,7 @@ export function AppHeader({ splitType, themePreference, onThemePreferenceChange 
         <div className="w-44">
           <Select value={themePreference} onValueChange={(value) => onThemePreferenceChange(value as ThemePreference)}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Tema" />
+              <SelectValue placeholder="Tema">{THEME_LABELS[themePreference]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="system">Tema: Sistema</SelectItem>
@@ -39,9 +45,9 @@ export function AppHeader({ splitType, themePreference, onThemePreferenceChange 
         </div>
       </div>
 
-      <h1 className="text-3xl font-black tracking-tight sm:text-5xl">Treino OS v1</h1>
+      <h1 className="text-3xl font-black tracking-tight sm:text-5xl">Workout OS</h1>
 
-      <nav className="mx-auto flex max-w-xl flex-wrap items-center justify-center gap-2">
+      <nav className="mx-auto hidden max-w-xl flex-wrap items-center justify-center gap-2 md:flex">
         <NavLink to="/" className={({ isActive }) => navClassName(isActive)} end>
           Painel
         </NavLink>

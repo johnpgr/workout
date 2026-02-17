@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { ClockCountdownIcon } from "@phosphor-icons/react"
-import { useFieldArray, useForm, type Control, type UseFormRegister, type UseFormSetValue, type UseFormWatch } from "react-hook-form"
+import { Controller, useFieldArray, useForm, type Control } from "react-hook-form"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DatePicker } from "@/components/ui/date-picker"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { SetRowInput } from "@/features/training/components/set-row-input"
@@ -21,6 +23,7 @@ import type {
   SaveSessionInput,
   SessionWithSets,
 } from "@/lib/training-db"
+import { parseDate } from "@/lib/temporal"
 import type { SplitType } from "@/lib/training-types"
 
 interface WorkoutsSectionProps {
@@ -41,17 +44,11 @@ interface WorkoutCardFormProps {
 
 interface ExerciseSetRowsProps {
   control: Control<WorkoutFormValues>
-  register: UseFormRegister<WorkoutFormValues>
-  setValue: UseFormSetValue<WorkoutFormValues>
-  watch: UseFormWatch<WorkoutFormValues>
   exerciseIndex: number
 }
 
 function ExerciseSetRows({
   control,
-  register,
-  setValue,
-  watch,
   exerciseIndex,
 }: ExerciseSetRowsProps) {
   const setArrayName = `exercises.${exerciseIndex}.sets` as const
@@ -68,15 +65,7 @@ function ExerciseSetRows({
           key={setField.id}
           exerciseIndex={exerciseIndex}
           setIndex={setIndex}
-          register={register}
-          selectedRpe={watch(`exercises.${exerciseIndex}.sets.${setIndex}.rpe`) || ""}
-          onRpePick={(value) =>
-            setValue(`exercises.${exerciseIndex}.sets.${setIndex}.rpe`, String(value), {
-              shouldDirty: true,
-              shouldTouch: true,
-              shouldValidate: true,
-            })
-          }
+          control={control}
           onRemove={() => setsFieldArray.remove(setIndex)}
           canRemove={setsFieldArray.fields.length > 1}
         />
@@ -106,6 +95,14 @@ function parseNonNegativeNumber(value: string): number {
   return parsed
 }
 
+function parseISODate(value: string) {
+  try {
+    return parseDate(value)
+  } catch {
+    return undefined
+  }
+}
+
 function getSessionSummaryText(session: SessionWithSets): string {
   const totalSets = session.sets.length
   const volumeLoad = session.sets.reduce((total, set) => total + set.weightKg * set.reps, 0)
@@ -127,14 +124,10 @@ function WorkoutCardForm({
     mode: "onSubmit",
   })
 
-  const { register, control, watch, setValue, handleSubmit, reset, formState } = form
+  const { control, setValue, handleSubmit, reset, formState } = form
 
   const lastSessionQuery = useLastSessionQuery(workout.type, splitType)
   const lastSession = lastSessionQuery.data
-
-  useEffect(() => {
-    reset(createWorkoutFormDefaultValues(defaultDate, workout))
-  }, [defaultDate, workout, reset])
 
   const summaryText = lastSession ? getSessionSummaryText(lastSession) : null
 
@@ -268,61 +261,81 @@ function WorkoutCardForm({
           </div>
         ) : null}
 
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleSubmit(onSubmit)(event)
-          }}
-        >
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor={`${workout.type}-date`}>
-                Data
-              </label>
-              <Input
-                id={`${workout.type}-date`}
-                type="date"
-                {...register("date")}
-                className="h-11 border-border bg-background text-foreground"
+        <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+          <FieldGroup>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Controller
+                name="date"
+                control={control}
+                render={({ field, fieldState }) => (
+                  <Field className="space-y-1.5" data-invalid={fieldState.invalid}>
+                    <FieldLabel
+                      className="text-xs uppercase tracking-[0.08em] text-muted-foreground"
+                      htmlFor={`${workout.type}-${field.name}`}
+                    >
+                      Data
+                    </FieldLabel>
+                    <DatePicker
+                      id={`${workout.type}-${field.name}`}
+                      value={parseISODate(field.value)}
+                      onChange={(date) => field.onChange(date.toString())}
+                      buttonClassName="h-11 border-border bg-background text-foreground"
+                    />
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
               />
-              {formState.errors.date?.message ? (
-                <p className="text-xs text-destructive">{formState.errors.date.message}</p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <label
-                className="text-xs uppercase tracking-[0.08em] text-muted-foreground"
-                htmlFor={`${workout.type}-duration`}
-              >
-                Duração (min)
-              </label>
-              <Input
-                id={`${workout.type}-duration`}
-                type="number"
-                min={1}
-                step={1}
-                placeholder="Ex: 82"
-                {...register("duration")}
-                className="h-11 border-border bg-background text-foreground"
-              />
-              {formState.errors.duration?.message ? (
-                <p className="text-xs text-destructive">{formState.errors.duration.message}</p>
-              ) : null}
-            </div>
-          </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor={`${workout.type}-notes`}>
-              Observações
-            </label>
-            <Textarea
-              id={`${workout.type}-notes`}
-              placeholder="Técnica, dor, sensação de fadiga, etc."
-              {...register("notes")}
-              className="min-h-20 border-border bg-background text-foreground"
+              <Controller
+                name="duration"
+                control={control}
+                render={({ field, fieldState }) => (
+                  <Field className="space-y-1.5" data-invalid={fieldState.invalid}>
+                    <FieldLabel
+                      className="text-xs uppercase tracking-[0.08em] text-muted-foreground"
+                      htmlFor={`${workout.type}-${field.name}`}
+                    >
+                      Duração (min)
+                    </FieldLabel>
+                    <Input
+                      {...field}
+                      id={`${workout.type}-${field.name}`}
+                      type="number"
+                      min={1}
+                      step={1}
+                      placeholder="Ex: 82"
+                      className="h-11 border-border bg-background text-foreground"
+                      aria-invalid={fieldState.invalid}
+                    />
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+            </div>
+
+            <Controller
+              name="notes"
+              control={control}
+              render={({ field, fieldState }) => (
+                <Field className="space-y-1.5" data-invalid={fieldState.invalid}>
+                  <FieldLabel
+                    className="text-xs uppercase tracking-[0.08em] text-muted-foreground"
+                    htmlFor={`${workout.type}-${field.name}`}
+                  >
+                    Observações
+                  </FieldLabel>
+                  <Textarea
+                    {...field}
+                    id={`${workout.type}-${field.name}`}
+                    placeholder="Técnica, dor, sensação de fadiga, etc."
+                    className="min-h-20 border-border bg-background text-foreground"
+                    aria-invalid={fieldState.invalid}
+                  />
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
             />
-          </div>
+          </FieldGroup>
 
           <div className="space-y-4">
             {workout.exercises.map((exercise, exerciseIndex) => (
@@ -337,9 +350,6 @@ function WorkoutCardForm({
 
                 <ExerciseSetRows
                   control={control}
-                  register={register}
-                  setValue={setValue}
-                  watch={watch}
                   exerciseIndex={exerciseIndex}
                 />
               </section>
@@ -383,7 +393,7 @@ export function WorkoutsSection({
     <section className="space-y-6">
       {workouts.map((workout) => (
         <WorkoutCardForm
-          key={workout.type}
+          key={`${workout.type}-${defaultDate}`}
           defaultDate={defaultDate}
           splitType={splitType}
           isSaving={isSaving}

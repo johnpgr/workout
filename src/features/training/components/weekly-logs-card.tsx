@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   TECHNIQUE_LABELS,
@@ -14,6 +14,7 @@ import {
   formatDateBR,
   formatISOToBR,
   getCalendarTypeClasses,
+  getISOWeekInputValue,
   toISODateString,
 } from "@/features/training/helpers"
 import type { WeekMode, WeekSummary } from "@/features/training/types"
@@ -23,7 +24,6 @@ import type { SessionWithSets } from "@/lib/training-types"
 interface WeeklyLogsCardProps {
   mode: WeekMode
   availableModes: WeekMode[]
-  weekValue: string
   weekDates: Temporal.PlainDate[]
   selectedDate: string
   selectedLogs: SessionWithSets[]
@@ -38,10 +38,26 @@ interface WeeklyLogsCardProps {
   onDeleteLog: (id: string) => Promise<void>
 }
 
+function formatWeekRangeLabel(weekDates: Temporal.PlainDate[]): string | undefined {
+  const weekStart = weekDates[0]
+  const weekEnd = weekDates[6]
+
+  if (!weekStart || !weekEnd) {
+    return undefined
+  }
+
+  const formatOptions: Intl.DateTimeFormatOptions = {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }
+
+  return `${weekStart.toLocaleString("pt-BR", formatOptions)} até ${weekEnd.toLocaleString("pt-BR", formatOptions)}`
+}
+
 export function WeeklyLogsCard({
   mode,
   availableModes,
-  weekValue,
   weekDates,
   selectedDate,
   selectedLogs,
@@ -69,19 +85,21 @@ export function WeeklyLogsCard({
             <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor="week-picker">
               Semana
             </label>
-            <Input
+            <DatePicker
               id="week-picker"
-              type="week"
-              value={weekValue}
-              onChange={(event) => onWeekValueChange(event.target.value)}
-              className="border-border bg-background text-foreground"
+              value={weekDates[0]}
+              label={formatWeekRangeLabel(weekDates)}
+              onChange={(date) => onWeekValueChange(getISOWeekInputValue(date))}
+              buttonClassName="border-border bg-background text-foreground"
             />
           </div>
           <div className="min-w-56 space-y-1.5">
             <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Modelo da semana</label>
             <Select value={mode} onValueChange={(value) => onModeChange(value as WeekMode)}>
               <SelectTrigger className="w-full border-border bg-background text-foreground">
-                <SelectValue placeholder="Selecione o modelo" />
+                <SelectValue placeholder="Selecione o modelo">
+                  {WEEK_MODE_LABELS[mode]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {availableModes.map((modeOption) => (

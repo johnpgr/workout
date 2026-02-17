@@ -134,7 +134,6 @@ export function WorkoutPage() {
       <WeeklyLogsCard
         mode={effectiveMode}
         availableModes={splitConfig.weekModes}
-        weekValue={weekValue}
         weekDates={weekDates}
         selectedDate={selectedDate}
         selectedLogs={selectedLogs}

@@ -298,7 +298,9 @@ export function SettingsPage() {
             onValueChange={(value) => void setSplitType(value as SplitType)}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Selecione a divisão" />
+              <SelectValue placeholder="Selecione a divisão">
+                {splitLabel}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ppl">Empurrar / Puxar / Pernas</SelectItem>

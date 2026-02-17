@@ -1,34 +1,65 @@
-import { useState, type FormEvent } from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { Controller, useForm } from "react-hook-form"
+import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DatePicker } from "@/components/ui/date-picker"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useSaveWeightMutation } from "@/features/body-comp/queries"
-import { getCurrentDate } from "@/lib/temporal"
+import { getCurrentDate, parseDate } from "@/lib/temporal"
+
+function isValidISODate(value: string): boolean {
+  try {
+    parseDate(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const weightFormSchema = z.object({
+  date: z
+    .string()
+    .min(1, "Informe a data da pesagem.")
+    .refine((value) => isValidISODate(value), "Informe uma data válida."),
+  weightKg: z
+    .string()
+    .trim()
+    .refine((value) => Number.isFinite(Number(value)) && Number(value) > 0, "Informe um peso válido."),
+  notes: z.string(),
+})
+
+type WeightFormValues = z.infer<typeof weightFormSchema>
 
 export function WeightForm() {
   const saveWeightMutation = useSaveWeightMutation()
+  const form = useForm<WeightFormValues>({
+    resolver: zodResolver(weightFormSchema),
+    defaultValues: {
+      date: getCurrentDate().toString(),
+      weightKg: "",
+      notes: "",
+    },
+    mode: "onSubmit",
+  })
 
-  const [date, setDate] = useState(getCurrentDate().toString())
-  const [weightKg, setWeightKg] = useState("")
-  const [notes, setNotes] = useState("")
+  const { control, handleSubmit, reset, formState } = form
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
-    const parsedWeight = Number(weightKg)
-    if (!Number.isFinite(parsedWeight) || parsedWeight <= 0) {
-      return
-    }
-
+  async function onSubmit(values: WeightFormValues) {
+    const parsedWeight = Number(values.weightKg)
     await saveWeightMutation.mutateAsync({
-      date,
+      date: values.date,
       weightKg: parsedWeight,
-      notes: notes.trim(),
+      notes: values.notes.trim(),
     })
 
-    setWeightKg("")
-    setNotes("")
+    reset({
+      ...values,
+      weightKg: "",
+      notes: "",
+    })
   }
 
   return (
@@ -37,44 +68,71 @@ export function WeightForm() {
         <CardTitle className="text-lg">Peso diário</CardTitle>
       </CardHeader>
       <CardContent>
-        <form className="grid gap-3 md:grid-cols-2" onSubmit={(event) => void handleSubmit(event)}>
-          <div className="space-y-1">
-            <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor="weight-date">
-              Data
-            </label>
-            <Input id="weight-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor="weight-kg">
-              Peso (kg)
-            </label>
-            <Input
-              id="weight-kg"
-              type="number"
-              step={0.1}
-              min={0}
-              value={weightKg}
-              onChange={(event) => setWeightKg(event.target.value)}
-              placeholder="Ex: 76.4"
+        <form className="space-y-3" onSubmit={handleSubmit(onSubmit)}>
+          <FieldGroup className="grid gap-3 md:grid-cols-2">
+            <Controller
+              control={control}
+              name="date"
+              render={({ field, fieldState }) => (
+                <Field className="space-y-1" data-invalid={fieldState.invalid}>
+                  <FieldLabel className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor={`weight-${field.name}`}>
+                    Data
+                  </FieldLabel>
+                  <DatePicker
+                    id={`weight-${field.name}`}
+                    value={isValidISODate(field.value) ? parseDate(field.value) : undefined}
+                    onChange={(date) => field.onChange(date.toString())}
+                  />
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
             />
-          </div>
 
-          <div className="space-y-1 md:col-span-2">
-            <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor="weight-notes">
-              Observações
-            </label>
-            <Textarea
-              id="weight-notes"
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Retenção, refeição tardia, etc."
-              className="min-h-20"
+            <Controller
+              control={control}
+              name="weightKg"
+              render={({ field, fieldState }) => (
+                <Field className="space-y-1" data-invalid={fieldState.invalid}>
+                  <FieldLabel className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor={`weight-${field.name}`}>
+                    Peso (kg)
+                  </FieldLabel>
+                  <Input
+                    id={`weight-${field.name}`}
+                    type="number"
+                    step={0.1}
+                    min={0}
+                    {...field}
+                    aria-invalid={fieldState.invalid}
+                    placeholder="Ex: 76.4"
+                  />
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
             />
-          </div>
 
-          <div className="md:col-span-2">
-            <Button type="submit" disabled={saveWeightMutation.isPending}>
+            <Controller
+              control={control}
+              name="notes"
+              render={({ field, fieldState }) => (
+                <Field className="space-y-1 md:col-span-2" data-invalid={fieldState.invalid}>
+                  <FieldLabel className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor={`weight-${field.name}`}>
+                    Observações
+                  </FieldLabel>
+                  <Textarea
+                    id={`weight-${field.name}`}
+                    {...field}
+                    placeholder="Retenção, refeição tardia, etc."
+                    className="min-h-20"
+                    aria-invalid={fieldState.invalid}
+                  />
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
+          </FieldGroup>
+
+          <div>
+            <Button type="submit" disabled={saveWeightMutation.isPending || formState.isSubmitting}>
               Salvar peso
             </Button>
           </div>

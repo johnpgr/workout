@@ -1,6 +1,16 @@
 import { useState } from "react"
+import { CaretDownIcon } from "@phosphor-icons/react"
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useProgressSessionsQuery } from "@/features/progress/queries"
 import { getBestE1RMForExercise } from "@/features/progress/e1rm-utils"
 
@@ -34,18 +44,28 @@ export function E1RMChart() {
           <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor="e1rm-exercise">
             Exercício
           </label>
-          <select
-            id="e1rm-exercise"
-            className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-            value={selectedExercise}
-            onChange={(event) => setExerciseName(event.target.value)}
-          >
-            {exerciseOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              id="e1rm-exercise"
+              render={<Button type="button" variant="outline" className="h-10 w-full justify-between" />}
+            >
+              <span className="truncate">{selectedExercise || "Selecione um exercício"}</span>
+              <CaretDownIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent sideOffset={6} className="w-[var(--anchor-width)]">
+              {exerciseOptions.length ? (
+                <DropdownMenuRadioGroup value={selectedExercise} onValueChange={setExerciseName}>
+                  {exerciseOptions.map((name) => (
+                    <DropdownMenuRadioItem key={name} value={name}>
+                      {name}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              ) : (
+                <DropdownMenuItem disabled>Sem exercícios disponíveis</DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {!chartData.length ? (

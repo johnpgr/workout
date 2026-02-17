@@ -1,15 +1,24 @@
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { TECHNIQUE_LABELS, RPE_OPTIONS } from "@/features/training/constants"
 import type { WorkoutFormValues } from "@/features/training/form-schema"
-import type { UseFormRegister } from "react-hook-form"
+import { CaretDownIcon } from "@phosphor-icons/react"
+import type { Control } from "react-hook-form"
+import { useController } from "react-hook-form"
+
+const NO_TECHNIQUE_VALUE = "__none__"
 
 interface SetRowInputProps {
   exerciseIndex: number
   setIndex: number
-  register: UseFormRegister<WorkoutFormValues>
-  selectedRpe: string
-  onRpePick: (value: number) => void
+  control: Control<WorkoutFormValues>
   onRemove: () => void
   canRemove: boolean
 }
@@ -17,12 +26,34 @@ interface SetRowInputProps {
 export function SetRowInput({
   exerciseIndex,
   setIndex,
-  register,
-  selectedRpe,
-  onRpePick,
+  control,
   onRemove,
   canRemove,
 }: SetRowInputProps) {
+  const weightFieldName = `exercises.${exerciseIndex}.sets.${setIndex}.weight` as const
+  const repsFieldName = `exercises.${exerciseIndex}.sets.${setIndex}.reps` as const
+  const rpeFieldName = `exercises.${exerciseIndex}.sets.${setIndex}.rpe` as const
+  const techniqueFieldName = `exercises.${exerciseIndex}.sets.${setIndex}.technique` as const
+  const weightField = useController({
+    control,
+    name: weightFieldName,
+  })
+  const repsField = useController({
+    control,
+    name: repsFieldName,
+  })
+  const rpeField = useController({
+    control,
+    name: rpeFieldName,
+  })
+  const techniqueField = useController({
+    control,
+    name: techniqueFieldName,
+  })
+  const selectedRpe = rpeField.field.value || ""
+  const selectedTechnique = techniqueField.field.value || ""
+  const selectedTechniqueLabel = selectedTechnique ? TECHNIQUE_LABELS[selectedTechnique] : "Sem técnica"
+
   return (
     <div className="space-y-2 rounded-md border border-border p-2">
       <div className="grid gap-2 md:grid-cols-4">
@@ -32,7 +63,8 @@ export function SetRowInput({
           step={0.5}
           className="h-11"
           placeholder="Peso (kg)"
-          {...register(`exercises.${exerciseIndex}.sets.${setIndex}.weight`)}
+          {...weightField.field}
+          value={weightField.field.value || ""}
         />
         <Input
           type="number"
@@ -40,7 +72,8 @@ export function SetRowInput({
           step={1}
           className="h-11"
           placeholder="Repetições"
-          {...register(`exercises.${exerciseIndex}.sets.${setIndex}.reps`)}
+          {...repsField.field}
+          value={repsField.field.value || ""}
         />
 
         <Input
@@ -50,20 +83,35 @@ export function SetRowInput({
           step={0.5}
           className="h-11"
           placeholder="RPE"
-          {...register(`exercises.${exerciseIndex}.sets.${setIndex}.rpe`)}
+          {...rpeField.field}
+          value={selectedRpe}
         />
 
-        <select
-          className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-          {...register(`exercises.${exerciseIndex}.sets.${setIndex}.technique`)}
-        >
-          <option value="">Sem técnica</option>
-          {Object.entries(TECHNIQUE_LABELS).map(([key, value]) => (
-            <option key={key} value={key}>
-              {value}
-            </option>
-          ))}
-        </select>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button type="button" variant="outline" className="h-11 w-full justify-between" />}>
+            <span className="truncate">{selectedTechniqueLabel}</span>
+            <CaretDownIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent sideOffset={6} className="w-[var(--anchor-width)]">
+            <DropdownMenuRadioGroup
+              value={selectedTechnique || NO_TECHNIQUE_VALUE}
+              onValueChange={(value) => {
+                techniqueField.field.onChange(
+                  value === NO_TECHNIQUE_VALUE
+                    ? ""
+                    : (value as WorkoutFormValues["exercises"][number]["sets"][number]["technique"])
+                )
+              }}
+            >
+              <DropdownMenuRadioItem value={NO_TECHNIQUE_VALUE}>Sem técnica</DropdownMenuRadioItem>
+              {Object.entries(TECHNIQUE_LABELS).map(([key, value]) => (
+                <DropdownMenuRadioItem key={key} value={key}>
+                  {value}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -74,7 +122,7 @@ export function SetRowInput({
             size="sm"
             variant={selectedRpe === String(option) ? "default" : "outline"}
             className="h-11 min-w-11"
-            onClick={() => onRpePick(option)}
+            onClick={() => rpeField.field.onChange(String(option))}
           >
             {option}
           </Button>
