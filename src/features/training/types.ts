@@ -1,33 +1,71 @@
 import type { ElementType } from "react"
-import type { WorkoutType } from "@/lib/training-types"
+import type {
+  IntensificationTechnique,
+  SplitType,
+  WorkoutType,
+} from "@/lib/training-types"
+
+export type MuscleGroup =
+  | "chest"
+  | "back"
+  | "shoulders"
+  | "biceps"
+  | "triceps"
+  | "quads"
+  | "hamstrings"
+  | "glutes"
+  | "calves"
 
 export type PlannedType = WorkoutType | "rest"
-export type WeekMode = "6" | "3"
+export type WeekMode = "ppl-6" | "ppl-3" | "upper-lower-4"
 export type ThemePreference = "light" | "dark" | "system"
 
 export interface ExercisePlan {
   name: string
   detail: string
   type: "COMPOSTO" | "ISOLAMENTO"
+  muscleGroup: MuscleGroup
   setsReps: string
+  defaultSets: number
   rest: string
   notes: string
 }
 
 export interface WorkoutPlan {
+  splitType: SplitType
   type: WorkoutType
   label: string
   title: string
   icon: ElementType
   badge: string
+  focus: "strength" | "hypertrophy"
   duration: string
   exercises: ExercisePlan[]
+}
+
+export interface SplitConfig {
+  type: SplitType
+  label: string
+  weekModes: WeekMode[]
+  workouts: WorkoutPlan[]
 }
 
 export interface TipItem {
   title: string
   icon: ElementType
   items: string[]
+}
+
+export interface SetLogInput {
+  weight: string
+  reps: string
+  rpe: string
+  technique: IntensificationTechnique | ""
+}
+
+export interface ExerciseInput {
+  exerciseName: string
+  sets: SetLogInput[]
 }
 
 export type FormStatus =
@@ -40,7 +78,5 @@ export type FormStatus =
 export interface WeekSummary {
   totalSessions: number
   totalMinutes: number
-  totalPush: number
-  totalPull: number
-  totalLegs: number
+  byWorkoutType: Partial<Record<WorkoutType, number>>
 }

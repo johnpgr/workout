@@ -1,4 +1,11 @@
-import { formatDateDayMonth, formatDateShort, getWeekDatesFromInput, getWeekInputValue, parseDate, type Temporal } from "@/lib/temporal"
+import {
+  formatDateDayMonth,
+  formatDateShort,
+  getWeekDatesFromInput,
+  getWeekInputValue,
+  parseDate,
+  type Temporal,
+} from "@/lib/temporal"
 import { THEME_STORAGE_KEY } from "@/features/training/constants"
 import type { PlannedType, ThemePreference } from "@/features/training/types"
 
@@ -45,8 +52,21 @@ export function parseISODate(isoDate: string): Temporal.PlainDate | null {
 }
 
 export function getCalendarTypeClasses(type: PlannedType): string {
-  if (type === "push") return ""
-  if (type === "pull") return ""
-  if (type === "leg") return ""
-  return "opacity-80"
+  if (type === "rest") {
+    return "opacity-80"
+  }
+
+  if (type === "push" || type === "upper-a" || type === "upper-b") {
+    return "border-l-4 border-l-blue-500"
+  }
+
+  if (type === "pull") {
+    return "border-l-4 border-l-emerald-500"
+  }
+
+  if (type === "leg" || type === "lower-a" || type === "lower-b") {
+    return "border-l-4 border-l-orange-500"
+  }
+
+  return ""
 }

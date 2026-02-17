@@ -1,33 +1,96 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { ClockCountdownIcon } from "@phosphor-icons/react"
-import { useForm } from "react-hook-form"
+import { useFieldArray, useForm, type Control, type UseFormRegister, type UseFormSetValue, type UseFormWatch } from "react-hook-form"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { WORKOUTS } from "@/features/training/constants"
+import { SetRowInput } from "@/features/training/components/set-row-input"
 import {
   createWorkoutFormDefaultValues,
   type WorkoutFormValues,
   workoutFormSchema,
 } from "@/features/training/form-schema"
+import { formatISOToBR } from "@/features/training/helpers"
+import { useLastSessionQuery } from "@/features/training/queries"
+import { rpeToRir } from "@/features/training/rpe-utils"
 import type { FormStatus, WorkoutPlan } from "@/features/training/types"
-import { Temporal } from "@/lib/temporal"
-import type { SessionExerciseLog, SessionLog } from "@/lib/training-types"
+import type {
+  SaveSessionInput,
+  SessionWithSets,
+} from "@/lib/training-db"
+import type { SplitType } from "@/lib/training-types"
 
 interface WorkoutsSectionProps {
   defaultDate: string
+  splitType: SplitType
+  workouts: WorkoutPlan[]
   isSaving: boolean
-  onSaveLog: (payload: Omit<SessionLog, "id">) => Promise<void>
+  onSaveSession: (payload: SaveSessionInput) => Promise<void>
 }
 
 interface WorkoutCardFormProps {
   defaultDate: string
+  splitType: SplitType
   isSaving: boolean
   workout: WorkoutPlan
-  onSaveLog: (payload: Omit<SessionLog, "id">) => Promise<void>
+  onSaveSession: (payload: SaveSessionInput) => Promise<void>
+}
+
+interface ExerciseSetRowsProps {
+  control: Control<WorkoutFormValues>
+  register: UseFormRegister<WorkoutFormValues>
+  setValue: UseFormSetValue<WorkoutFormValues>
+  watch: UseFormWatch<WorkoutFormValues>
+  exerciseIndex: number
+}
+
+function ExerciseSetRows({
+  control,
+  register,
+  setValue,
+  watch,
+  exerciseIndex,
+}: ExerciseSetRowsProps) {
+  const setArrayName = `exercises.${exerciseIndex}.sets` as const
+
+  const setsFieldArray = useFieldArray({
+    control,
+    name: setArrayName,
+  })
+
+  return (
+    <div className="space-y-2">
+      {setsFieldArray.fields.map((setField, setIndex) => (
+        <SetRowInput
+          key={setField.id}
+          exerciseIndex={exerciseIndex}
+          setIndex={setIndex}
+          register={register}
+          selectedRpe={watch(`exercises.${exerciseIndex}.sets.${setIndex}.rpe`) || ""}
+          onRpePick={(value) =>
+            setValue(`exercises.${exerciseIndex}.sets.${setIndex}.rpe`, String(value), {
+              shouldDirty: true,
+              shouldTouch: true,
+              shouldValidate: true,
+            })
+          }
+          onRemove={() => setsFieldArray.remove(setIndex)}
+          canRemove={setsFieldArray.fields.length > 1}
+        />
+      ))}
+
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => setsFieldArray.append({ weight: "", reps: "", rpe: "", technique: "" })}
+      >
+        Adicionar série
+      </Button>
+    </div>
+  )
 }
 
 function parseNonNegativeNumber(value: string): number {
@@ -43,71 +106,145 @@ function parseNonNegativeNumber(value: string): number {
   return parsed
 }
 
+function getSessionSummaryText(session: SessionWithSets): string {
+  const totalSets = session.sets.length
+  const volumeLoad = session.sets.reduce((total, set) => total + set.weightKg * set.reps, 0)
+  return `${formatISOToBR(session.session.date)} · ${totalSets} séries · ${Math.round(volumeLoad)} kg volume`
+}
+
 function WorkoutCardForm({
   defaultDate,
+  splitType,
   isSaving,
   workout,
-  onSaveLog,
+  onSaveSession,
 }: WorkoutCardFormProps) {
   const [status, setStatus] = useState<FormStatus>(null)
 
   const form = useForm<WorkoutFormValues>({
     resolver: zodResolver(workoutFormSchema),
-    defaultValues: createWorkoutFormDefaultValues(defaultDate, workout.exercises.length),
+    defaultValues: createWorkoutFormDefaultValues(defaultDate, workout),
     mode: "onSubmit",
   })
 
-  const { register, handleSubmit, reset, getValues, formState } = form
+  const { register, control, watch, setValue, handleSubmit, reset, formState } = form
 
-  const dateError = formState.errors.date?.message
-  const durationError = formState.errors.duration?.message
+  const lastSessionQuery = useLastSessionQuery(workout.type, splitType)
+  const lastSession = lastSessionQuery.data
+
+  useEffect(() => {
+    reset(createWorkoutFormDefaultValues(defaultDate, workout))
+  }, [defaultDate, workout, reset])
+
+  const summaryText = useMemo(() => {
+    if (!lastSession) {
+      return null
+    }
+
+    return getSessionSummaryText(lastSession)
+  }, [lastSession])
 
   async function onSubmit(values: WorkoutFormValues) {
-    const exercises: SessionExerciseLog[] = values.rows
-      .map((row, index) => ({
-        name: workout.exercises[index].name,
-        sets: parseNonNegativeNumber(row.sets),
-        reps: parseNonNegativeNumber(row.reps),
-        weight: parseNonNegativeNumber(row.weight),
-      }))
-      .filter((entry) => entry.sets > 0 || entry.reps > 0 || entry.weight > 0)
+    const sets = values.exercises.flatMap((exercise, exerciseIndex) => {
+      return exercise.sets
+        .map((set, setIndex) => {
+          const weight = parseNonNegativeNumber(set.weight)
+          const reps = parseNonNegativeNumber(set.reps)
 
-    const payload: Omit<SessionLog, "id"> = {
-      workoutType: workout.type,
-      workoutLabel: workout.label,
-      date: values.date,
-      durationMin: Number(values.duration),
-      notes: values.notes.trim(),
-      exercises,
-      createdAt: Temporal.Now.instant().toString(),
+          if (weight <= 0 || reps <= 0) {
+            return null
+          }
+
+          const rpe = set.rpe.trim() ? parseNonNegativeNumber(set.rpe) : null
+
+          return {
+            exerciseName: exercise.exerciseName,
+            exerciseOrder: exerciseIndex,
+            setOrder: setIndex,
+            weightKg: weight,
+            reps,
+            rpe,
+            rir: rpe === null ? null : rpeToRir(rpe),
+            technique: set.technique || null,
+          }
+        })
+        .filter((entry) => entry !== null)
+    })
+
+    const payload: SaveSessionInput = {
+      session: {
+        date: values.date,
+        splitType,
+        workoutType: workout.type,
+        workoutLabel: workout.label,
+        durationMin: Number(values.duration),
+        notes: values.notes.trim(),
+      },
+      sets,
     }
 
     try {
-      await onSaveLog(payload)
-
-      setStatus({ kind: "success", message: "Treino salvo com sucesso no IndexedDB." })
+      await onSaveSession(payload)
+      setStatus({ kind: "success", message: "Sessão salva com sucesso." })
       reset({
-        date: values.date,
+        ...values,
         duration: "",
         notes: "",
-        rows: values.rows.map(() => ({ sets: "", reps: "", weight: "" })),
+        exercises: values.exercises.map((exercise) => ({
+          exerciseName: exercise.exerciseName,
+          sets: exercise.sets.map(() => ({
+            weight: "",
+            reps: "",
+            rpe: "",
+            technique: "",
+          })),
+        })),
       })
     } catch (error) {
       console.error(error)
-      setStatus({ kind: "error", message: "Não foi possível salvar no IndexedDB." })
+      setStatus({ kind: "error", message: "Não foi possível salvar a sessão." })
     }
   }
 
-  function handleClearForm() {
-    const currentDate = getValues("date") || defaultDate
-    reset(createWorkoutFormDefaultValues(currentDate, workout.exercises.length))
-    setStatus({ kind: "success", message: "Campos limpos." })
+  function handleCopyFromLastSession() {
+    if (!lastSession) {
+      return
+    }
+
+    const exercises: WorkoutFormValues["exercises"] = workout.exercises.map((exercise) => {
+      const matchingSets = lastSession.sets
+        .filter((set) => set.exerciseName === exercise.name)
+        .sort((a, b) => a.setOrder - b.setOrder)
+
+      if (!matchingSets.length) {
+        return {
+          exerciseName: exercise.name,
+          sets: [{ weight: "", reps: "", rpe: "", technique: "" }],
+        }
+      }
+
+      return {
+        exerciseName: exercise.name,
+        sets: matchingSets.map((set) => ({
+          weight: set.weightKg ? String(set.weightKg) : "",
+          reps: set.reps ? String(set.reps) : "",
+          rpe: set.rpe ? String(set.rpe) : "",
+          technique: (set.technique ?? "") as WorkoutFormValues["exercises"][number]["sets"][number]["technique"],
+        })),
+      }
+    })
+
+    setValue("date", defaultDate)
+    setValue("duration", String(lastSession.session.durationMin || ""))
+    setValue("notes", lastSession.session.notes ?? "")
+    setValue("exercises", exercises)
+    setStatus({ kind: "success", message: "Valores copiados da última sessão." })
   }
 
   const WorkoutIcon = workout.icon
 
   return (
-    <Card key={workout.type} className="overflow-hidden border-t-2">
+    <Card className="overflow-hidden border-t-2">
       <CardHeader className="border-b border-border pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-2">
@@ -126,146 +263,116 @@ function WorkoutCardForm({
         </div>
       </CardHeader>
 
-      <CardContent className="px-0">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-muted/60 text-xs uppercase tracking-[0.06em] text-muted-foreground">
-              <tr>
-                <th className="px-6 py-3">Exercício</th>
-                <th className="px-6 py-3">Séries × Reps</th>
-                <th className="px-6 py-3">Descanso</th>
-                <th className="px-6 py-3">Observações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workout.exercises.map((exercise) => (
-                <tr key={exercise.name} className="border-t border-border hover:bg-muted/40">
-                  <td className="space-y-1 px-6 py-4">
-                    <p className="font-semibold text-foreground">{exercise.name}</p>
-                    <p className="text-xs text-muted-foreground">{exercise.detail}</p>
-                    <Badge variant="outline" className="text-[10px]">
-                      {exercise.type}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4 font-semibold text-foreground">{exercise.setsReps}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{exercise.rest}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{exercise.notes}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <CardContent className="space-y-4 px-4 pt-4">
+        {summaryText ? (
+          <div className="rounded-lg border border-border bg-muted/30 p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Última sessão</p>
+            <p className="text-sm text-foreground">{summaryText}</p>
+            <Button type="button" size="sm" variant="outline" className="mt-2" onClick={handleCopyFromLastSession}>
+              Copiar da última sessão
+            </Button>
+          </div>
+        ) : null}
 
-        <div className="border-t border-border bg-muted/30 p-5">
-          <details className="rounded-xl border border-border bg-card">
-            <summary className="cursor-pointer px-4 py-3 font-semibold text-foreground">
-              Registrar Sessão - {workout.label}
-            </summary>
-            <form
-              className="space-y-4 border-t border-border p-4"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void handleSubmit(onSubmit)(event)
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleSubmit(onSubmit)(event)
+          }}
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor={`${workout.type}-date`}>
+                Data
+              </label>
+              <Input
+                id={`${workout.type}-date`}
+                type="date"
+                {...register("date")}
+                className="h-11 border-border bg-background text-foreground"
+              />
+              {formState.errors.date?.message ? (
+                <p className="text-xs text-destructive">{formState.errors.date.message}</p>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              <label
+                className="text-xs uppercase tracking-[0.08em] text-muted-foreground"
+                htmlFor={`${workout.type}-duration`}
+              >
+                Duração (min)
+              </label>
+              <Input
+                id={`${workout.type}-duration`}
+                type="number"
+                min={1}
+                step={1}
+                placeholder="Ex: 82"
+                {...register("duration")}
+                className="h-11 border-border bg-background text-foreground"
+              />
+              {formState.errors.duration?.message ? (
+                <p className="text-xs text-destructive">{formState.errors.duration.message}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground" htmlFor={`${workout.type}-notes`}>
+              Observações
+            </label>
+            <Textarea
+              id={`${workout.type}-notes`}
+              placeholder="Técnica, dor, sensação de fadiga, etc."
+              {...register("notes")}
+              className="min-h-20 border-border bg-background text-foreground"
+            />
+          </div>
+
+          <div className="space-y-4">
+            {workout.exercises.map((exercise, exerciseIndex) => (
+              <section key={exercise.name} className="rounded-lg border border-border p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">{exercise.name}</p>
+                    <p className="text-xs text-muted-foreground">{exercise.detail}</p>
+                  </div>
+                  <Badge variant="outline">{exercise.setsReps}</Badge>
+                </div>
+
+                <ExerciseSetRows
+                  control={control}
+                  register={register}
+                  setValue={setValue}
+                  watch={watch}
+                  exerciseIndex={exerciseIndex}
+                />
+              </section>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" disabled={isSaving || formState.isSubmitting}>
+              Salvar sessão
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                reset(createWorkoutFormDefaultValues(defaultDate, workout))
+                setStatus({ kind: "success", message: "Campos limpos." })
               }}
             >
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Data</label>
-                  <Input
-                    type="date"
-                    {...register("date")}
-                    className="border-border bg-background text-foreground"
-                  />
-                  {dateError ? <p className="text-xs text-destructive">{dateError}</p> : null}
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Duração (min)</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    step={1}
-                    placeholder="Ex: 82"
-                    {...register("duration")}
-                    className="border-border bg-background text-foreground"
-                  />
-                  {durationError ? <p className="text-xs text-destructive">{durationError}</p> : null}
-                </div>
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Observações</label>
-                  <Textarea
-                    placeholder="Como foi o treino, técnica, fadiga, dor, etc."
-                    {...register("notes")}
-                    className="min-h-24 border-border bg-background text-foreground"
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="bg-muted/60 text-xs uppercase tracking-[0.06em] text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2">Exercício</th>
-                      <th className="px-3 py-2">Sets</th>
-                      <th className="px-3 py-2">Reps</th>
-                      <th className="px-3 py-2">Peso (kg)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {workout.exercises.map((exercise, rowIndex) => (
-                      <tr key={exercise.name} className="border-t border-border">
-                        <td className="px-3 py-2 text-xs text-foreground sm:text-sm">{exercise.name}</td>
-                        <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            min={0}
-                            step={1}
-                            placeholder="sets"
-                            {...register(`rows.${rowIndex}.sets`)}
-                            className="h-8 border-border bg-background text-foreground"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            min={0}
-                            step={1}
-                            placeholder="reps"
-                            {...register(`rows.${rowIndex}.reps`)}
-                            className="h-8 border-border bg-background text-foreground"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            min={0}
-                            step={0.5}
-                            placeholder="kg"
-                            {...register(`rows.${rowIndex}.weight`)}
-                            className="h-8 border-border bg-background text-foreground"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" disabled={isSaving || formState.isSubmitting}>
-                  Salvar no IndexedDB
-                </Button>
-                <Button type="button" variant="outline" onClick={handleClearForm}>
-                  Limpar Campos
-                </Button>
-                {status ? (
-                  <span className={status.kind === "error" ? "text-sm text-destructive" : "text-sm text-primary"}>
-                    {status.message}
-                  </span>
-                ) : null}
-              </div>
-            </form>
-          </details>
-        </div>
+              Limpar campos
+            </Button>
+            {status ? (
+              <span className={status.kind === "error" ? "text-sm text-destructive" : "text-sm text-primary"}>
+                {status.message}
+              </span>
+            ) : null}
+          </div>
+        </form>
       </CardContent>
     </Card>
   )
@@ -273,18 +380,21 @@ function WorkoutCardForm({
 
 export function WorkoutsSection({
   defaultDate,
+  splitType,
+  workouts,
   isSaving,
-  onSaveLog,
+  onSaveSession,
 }: WorkoutsSectionProps) {
   return (
     <section className="space-y-6">
-      {WORKOUTS.map((workout) => (
+      {workouts.map((workout) => (
         <WorkoutCardForm
           key={workout.type}
           defaultDate={defaultDate}
+          splitType={splitType}
           isSaving={isSaving}
           workout={workout}
-          onSaveLog={onSaveLog}
+          onSaveSession={onSaveSession}
         />
       ))}
     </section>

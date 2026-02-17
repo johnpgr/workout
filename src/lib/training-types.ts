@@ -1,19 +1,78 @@
-export type WorkoutType = "push" | "pull" | "leg"
+export type SplitType = "ppl" | "upper-lower"
 
-export interface SessionExerciseLog {
-  name: string
-  sets: number
-  reps: number
-  weight: number
+export type PplWorkoutType = "push" | "pull" | "leg"
+export type UpperLowerWorkoutType = "upper-a" | "upper-b" | "lower-a" | "lower-b"
+export type WorkoutType = PplWorkoutType | UpperLowerWorkoutType
+
+export type IntensificationTechnique = "dropset" | "rest-pause" | "superset" | "myo-reps"
+
+export type RecommendationKind = "increase-load" | "increase-reps" | "reduce-intensity" | "consider-deload"
+export type RecommendationStatus = "pending" | "accepted" | "ignored"
+
+export interface SyncMetadata {
+  id: string
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+  version: number
 }
 
-export interface SessionLog {
-  id?: number
+export interface TrainingSession extends SyncMetadata {
+  date: string
+  splitType: SplitType
   workoutType: WorkoutType
   workoutLabel: string
-  date: string
   durationMin: number
   notes: string
-  exercises: SessionExerciseLog[]
-  createdAt: string
+}
+
+export interface ExerciseSetLog extends SyncMetadata {
+  sessionId: string
+  date: string
+  splitType: SplitType
+  workoutType: WorkoutType
+  exerciseName: string
+  exerciseOrder: number
+  setOrder: number
+  weightKg: number
+  reps: number
+  rpe: number | null
+  rir: number | null
+  technique: IntensificationTechnique | null
+}
+
+export interface SessionWithSets {
+  session: TrainingSession
+  sets: ExerciseSetLog[]
+}
+
+export interface ReadinessLog extends SyncMetadata {
+  date: string
+  sleepHours: number
+  sleepQuality: number
+  stress: number
+  pain: number
+  readinessScore: number
+  notes: string
+}
+
+export interface WeightLog extends SyncMetadata {
+  date: string
+  weightKg: number
+  notes: string
+}
+
+export interface Recommendation extends SyncMetadata {
+  date: string
+  splitType: SplitType | null
+  workoutType: WorkoutType | null
+  kind: RecommendationKind
+  status: RecommendationStatus
+  message: string
+  reason: string
+}
+
+export interface AppSetting extends SyncMetadata {
+  key: "active-split" | "theme-preference"
+  value: string
 }

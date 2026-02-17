@@ -2,14 +2,14 @@ import { BarbellIcon, WarningIcon } from "@phosphor-icons/react"
 
 export function AppFooter() {
   return (
-    <footer className="space-y-1 pb-4 text-center text-sm text-muted-foreground">
+    <footer className="space-y-1 pb-20 text-center text-sm text-muted-foreground md:pb-4">
       <p className="flex items-center justify-center gap-2">
         <BarbellIcon className="size-4" aria-hidden="true" />
-        <span>Plano criado para retorno gradual após pausa de 2 semanas | Adaptável conforme evolução individual</span>
+        <span>MVP v1: treino avançado + sleep/readiness, offline-first.</span>
       </p>
       <p className="flex items-center justify-center gap-2 text-xs">
         <WarningIcon className="size-4" aria-hidden="true" />
-        <span>Consulte um profissional de educação física para ajustes personalizados.</span>
+        <span>Consulte profissionais para ajustes individualizados.</span>
       </p>
     </footer>
   )
