@@ -15,6 +15,10 @@ export interface SyncMetadata {
   updatedAt: string
   deletedAt: string | null
   version: number
+  ownerUserId?: string
+  serverUpdatedAt?: string | null
+  isDirty?: boolean
+  lastSyncedAt?: string | null
 }
 
 export interface TrainingSession extends SyncMetadata {
@@ -75,4 +79,10 @@ export interface Recommendation extends SyncMetadata {
 export interface AppSetting extends SyncMetadata {
   key: "active-split" | "theme-preference"
   value: string
+}
+
+export interface SyncStateRecord {
+  key: string
+  value: string
+  updatedAt: string
 }

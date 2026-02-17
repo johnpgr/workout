@@ -39,6 +39,10 @@ export default defineConfig({
             return "react-query"
           }
 
+          if (id.includes("/@supabase/supabase-js/")) {
+            return "supabase"
+          }
+
           if (
             id.includes("/react-hook-form/") ||
             id.includes("/@hookform/resolvers/") ||

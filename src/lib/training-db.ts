@@ -9,6 +9,8 @@ import type {
   RecommendationStatus,
   SessionWithSets,
   SplitType,
+  SyncMetadata,
+  SyncStateRecord,
   TrainingSession,
   WeightLog,
   WorkoutType,
@@ -23,6 +25,7 @@ export type {
   RecommendationStatus,
   SessionWithSets,
   SplitType,
+  SyncStateRecord,
   TrainingSession,
   WeightLog,
   WorkoutType,
@@ -68,6 +71,34 @@ export interface CreateRecommendationInput {
   reason: string
 }
 
+export interface DirtySnapshot {
+  sessions: TrainingSession[]
+  exerciseSets: ExerciseSetLog[]
+  readinessLogs: ReadinessLog[]
+  weightLogs: WeightLog[]
+  recommendations: Recommendation[]
+  appSettings: AppSetting[]
+}
+
+export interface PulledChangesPayload {
+  sessions?: TrainingSession[]
+  exerciseSets?: ExerciseSetLog[]
+  readinessLogs?: ReadinessLog[]
+  weightLogs?: WeightLog[]
+  recommendations?: Recommendation[]
+  appSettings?: AppSetting[]
+  serverTime?: string
+}
+
+export interface SyncedIdsByTable {
+  sessions?: string[]
+  exerciseSets?: string[]
+  readinessLogs?: string[]
+  weightLogs?: string[]
+  recommendations?: string[]
+  appSettings?: string[]
+}
+
 class TrainingLogsDatabase extends Dexie {
   sessions!: Table<TrainingSession, string>
   exerciseSets!: Table<ExerciseSetLog, string>
@@ -75,6 +106,7 @@ class TrainingLogsDatabase extends Dexie {
   weightLogs!: Table<WeightLog, string>
   appSettings!: Table<AppSetting, string>
   recommendations!: Table<Recommendation, string>
+  syncState!: Table<SyncStateRecord, string>
 
   constructor() {
     super("treinos-v2-training")
@@ -88,12 +120,41 @@ class TrainingLogsDatabase extends Dexie {
       recommendations: "&id, date, status, kind, workoutType, updatedAt, deletedAt",
     })
 
+    this.version(2)
+      .stores({
+        sessions: "&id, date, splitType, workoutType, updatedAt, deletedAt, isDirty",
+        exercise_sets: "&id, sessionId, date, splitType, workoutType, exerciseName, updatedAt, deletedAt, isDirty",
+        readiness_logs: "&id, date, updatedAt, deletedAt, isDirty",
+        weight_logs: "&id, date, updatedAt, deletedAt, isDirty",
+        app_settings: "&id, &key, updatedAt, isDirty",
+        recommendations: "&id, date, status, kind, workoutType, updatedAt, deletedAt, isDirty",
+        sync_state: "&key, updatedAt",
+      })
+      .upgrade(async (transaction) => {
+        const migrateRow = (row: Record<string, unknown>) => {
+          row.isDirty = true
+          row.lastSyncedAt = typeof row.lastSyncedAt === "string" ? row.lastSyncedAt : null
+          row.serverUpdatedAt = typeof row.serverUpdatedAt === "string" ? row.serverUpdatedAt : null
+          if (typeof row.ownerUserId !== "string") {
+            row.ownerUserId = undefined
+          }
+        }
+
+        await transaction.table("sessions").toCollection().modify(migrateRow)
+        await transaction.table("exercise_sets").toCollection().modify(migrateRow)
+        await transaction.table("readiness_logs").toCollection().modify(migrateRow)
+        await transaction.table("weight_logs").toCollection().modify(migrateRow)
+        await transaction.table("app_settings").toCollection().modify(migrateRow)
+        await transaction.table("recommendations").toCollection().modify(migrateRow)
+      })
+
     this.sessions = this.table("sessions")
     this.exerciseSets = this.table("exercise_sets")
     this.readinessLogs = this.table("readiness_logs")
     this.weightLogs = this.table("weight_logs")
     this.appSettings = this.table("app_settings")
     this.recommendations = this.table("recommendations")
+    this.syncState = this.table("sync_state")
   }
 }
 
@@ -110,7 +171,7 @@ function createId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function createSyncMeta() {
+function createSyncMeta(overrides?: Partial<SyncMetadata>): SyncMetadata {
   const timestamp = nowISO()
   return {
     id: createId(),
@@ -118,14 +179,19 @@ function createSyncMeta() {
     updatedAt: timestamp,
     deletedAt: null,
     version: 1,
-  } as const
+    serverUpdatedAt: null,
+    isDirty: true,
+    lastSyncedAt: null,
+    ...overrides,
+  }
 }
 
-function touchVersion<T extends { updatedAt: string; version: number }>(record: T): T {
+function touchVersion<T extends SyncMetadata>(record: T): T {
   return {
     ...record,
     updatedAt: nowISO(),
     version: record.version + 1,
+    isDirty: true,
   }
 }
 
@@ -141,6 +207,41 @@ function sortSets(a: ExerciseSetLog, b: ExerciseSetLog): number {
     return a.exerciseOrder - b.exerciseOrder
   }
   return a.setOrder - b.setOrder
+}
+
+function compareServerAuthority(local: SyncMetadata | undefined, incoming: SyncMetadata): number {
+  if (!local) {
+    return -1
+  }
+
+  const localServer = local.serverUpdatedAt ?? local.updatedAt
+  const incomingServer = incoming.serverUpdatedAt ?? incoming.updatedAt
+
+  if (incomingServer > localServer) {
+    return -1
+  }
+
+  if (incomingServer < localServer) {
+    return 1
+  }
+
+  if (incoming.version > local.version) {
+    return -1
+  }
+
+  if (incoming.version < local.version) {
+    return 1
+  }
+
+  if (incoming.updatedAt > local.updatedAt) {
+    return -1
+  }
+
+  if (incoming.updatedAt < local.updatedAt) {
+    return 1
+  }
+
+  return 0
 }
 
 async function getSetsBySessionIds(sessionIds: string[]): Promise<Map<string, ExerciseSetLog[]>> {
@@ -162,6 +263,45 @@ async function getSetsBySessionIds(sessionIds: string[]): Promise<Map<string, Ex
   }
 
   return grouped
+}
+
+async function markTableRowsSynced<T extends SyncMetadata>(table: Table<T, string>, ids: string[], serverTime: string, ownerUserId?: string) {
+  if (!ids.length) {
+    return
+  }
+
+  const rows = await table.where("id").anyOf(ids).toArray()
+  if (!rows.length) {
+    return
+  }
+
+  await table.bulkPut(
+    rows.map((row) => ({
+      ...row,
+      isDirty: false,
+      lastSyncedAt: serverTime,
+      serverUpdatedAt: serverTime,
+      ownerUserId: ownerUserId ?? row.ownerUserId,
+    }))
+  )
+}
+
+async function mergeTableRows<T extends SyncMetadata>(table: Table<T, string>, rows: T[], serverTime: string) {
+  for (const incoming of rows) {
+    const normalizedIncoming = {
+      ...incoming,
+      serverUpdatedAt: incoming.serverUpdatedAt ?? serverTime,
+      isDirty: false,
+      lastSyncedAt: serverTime,
+    }
+
+    const current = await table.get(incoming.id)
+    const comparison = compareServerAuthority(current, normalizedIncoming)
+
+    if (comparison <= 0) {
+      await table.put(normalizedIncoming)
+    }
+  }
 }
 
 export async function saveSessionWithSets(input: SaveSessionInput): Promise<string> {
@@ -416,7 +556,7 @@ export async function setSetting(key: AppSetting["key"], value: string): Promise
   }
 
   const setting: AppSetting = {
-    ...createSyncMeta(),
+    ...createSyncMeta({ id: `app-setting:${key}` }),
     key,
     value,
   }
@@ -479,6 +619,80 @@ export async function getRecommendations(status?: RecommendationStatus): Promise
     : await db.recommendations.filter((item) => item.deletedAt === null).toArray()
 
   return recommendations.sort((a, b) => b.date.localeCompare(a.date))
+}
+
+export async function getDirtySnapshot(): Promise<DirtySnapshot> {
+  const [sessions, exerciseSets, readinessLogs, weightLogs, recommendations, appSettings] = await Promise.all([
+    db.sessions.filter((row) => row.isDirty === true).toArray(),
+    db.exerciseSets.filter((row) => row.isDirty === true).toArray(),
+    db.readinessLogs.filter((row) => row.isDirty === true).toArray(),
+    db.weightLogs.filter((row) => row.isDirty === true).toArray(),
+    db.recommendations.filter((row) => row.isDirty === true).toArray(),
+    db.appSettings.filter((row) => row.isDirty === true).toArray(),
+  ])
+
+  return {
+    sessions,
+    exerciseSets,
+    readinessLogs,
+    weightLogs,
+    recommendations,
+    appSettings,
+  }
+}
+
+export async function getDirtyRowCount(): Promise<number> {
+  const snapshot = await getDirtySnapshot()
+  return (
+    snapshot.sessions.length +
+    snapshot.exerciseSets.length +
+    snapshot.readinessLogs.length +
+    snapshot.weightLogs.length +
+    snapshot.recommendations.length +
+    snapshot.appSettings.length
+  )
+}
+
+export async function markRowsSynced(idsByTable: SyncedIdsByTable, serverTime: string, ownerUserId?: string): Promise<void> {
+  await db.transaction("rw", db.tables, async () => {
+    await markTableRowsSynced(db.sessions, idsByTable.sessions ?? [], serverTime, ownerUserId)
+    await markTableRowsSynced(db.exerciseSets, idsByTable.exerciseSets ?? [], serverTime, ownerUserId)
+    await markTableRowsSynced(db.readinessLogs, idsByTable.readinessLogs ?? [], serverTime, ownerUserId)
+    await markTableRowsSynced(db.weightLogs, idsByTable.weightLogs ?? [], serverTime, ownerUserId)
+    await markTableRowsSynced(db.recommendations, idsByTable.recommendations ?? [], serverTime, ownerUserId)
+    await markTableRowsSynced(db.appSettings, idsByTable.appSettings ?? [], serverTime, ownerUserId)
+  })
+}
+
+export async function applyPulledChanges(payload: PulledChangesPayload): Promise<void> {
+  const serverTime = payload.serverTime ?? nowISO()
+
+  await db.transaction("rw", db.tables, async () => {
+    await mergeTableRows(db.sessions, payload.sessions ?? [], serverTime)
+    await mergeTableRows(db.exerciseSets, payload.exerciseSets ?? [], serverTime)
+    await mergeTableRows(db.readinessLogs, payload.readinessLogs ?? [], serverTime)
+    await mergeTableRows(db.weightLogs, payload.weightLogs ?? [], serverTime)
+    await mergeTableRows(db.recommendations, payload.recommendations ?? [], serverTime)
+    await mergeTableRows(db.appSettings, payload.appSettings ?? [], serverTime)
+  })
+}
+
+export async function setSyncState(key: string, value: string): Promise<void> {
+  await db.syncState.put({
+    key,
+    value,
+    updatedAt: nowISO(),
+  })
+}
+
+export async function getSyncState(key: string): Promise<string | null> {
+  const state = await db.syncState.get(key)
+  return state?.value ?? null
+}
+
+export async function getAllSyncState(): Promise<SyncStateRecord[]> {
+  const rows = await db.syncState.toArray()
+  return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 export async function getBackupSnapshot() {

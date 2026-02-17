@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { RouterProvider } from "react-router"
 
 import "./index.css"
+import { SyncRuntimeBridge } from "@/components/sync-runtime-bridge"
+import { AuthProvider } from "@/lib/auth-context"
 import { router } from "@/routes"
 
 const queryClient = new QueryClient()
@@ -17,7 +19,10 @@ const ReactQueryDevtools = import.meta.env.DEV
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <AuthProvider>
+        <SyncRuntimeBridge />
+        <RouterProvider router={router} />
+      </AuthProvider>
       {ReactQueryDevtools ? (
         <Suspense fallback={null}>
           <ReactQueryDevtools initialIsOpen={false} />

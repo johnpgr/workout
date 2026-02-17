@@ -1,11 +1,20 @@
-import { useMemo } from "react"
+import { use, useEffect, useMemo, useState } from "react"
 import { useOutletContext } from "react-router"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { checkStoragePersistence, useSyncStatus } from "@/lib/sync"
 import { getSplitConfig } from "@/features/training/splits/split-registry"
 import type { SplitType } from "@/lib/training-types"
 import type { AppLayoutContextValue } from "@/layouts/app-layout"
+import { AuthContext } from "@/lib/auth-context-store"
 
 function downloadTextFile(filename: string, content: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType })
@@ -21,8 +30,54 @@ function downloadTextFile(filename: string, content: string, mimeType: string) {
 
 export function SettingsPage() {
   const { splitType, setSplitType } = useOutletContext<AppLayoutContextValue>()
+  const { user, isAuthenticated, isLoading, signInWithMagicLink, signOut } =
+    use(AuthContext)
+  const {
+    lastSyncAt,
+    syncError,
+    pendingChanges,
+    isSyncing,
+    storageChecked,
+    storagePersisted,
+    isIOS,
+    syncNow,
+  } = useSyncStatus()
+
+  const [email, setEmail] = useState("")
+  const [authStatus, setAuthStatus] = useState<string | null>(null)
 
   const splitLabel = useMemo(() => getSplitConfig(splitType).label, [splitType])
+
+  useEffect(() => {
+    void checkStoragePersistence()
+  }, [])
+
+  async function handleSignInWithMagicLink() {
+    if (!email.trim()) {
+      setAuthStatus("Enter an email to receive the magic link.")
+      return
+    }
+
+    try {
+      await signInWithMagicLink(email.trim())
+      setAuthStatus("Magic link sent. Check your inbox.")
+    } catch (error) {
+      setAuthStatus(
+        error instanceof Error ? error.message : "Failed to send magic link.",
+      )
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await signOut()
+      setAuthStatus("Signed out.")
+    } catch (error) {
+      setAuthStatus(
+        error instanceof Error ? error.message : "Failed to sign out.",
+      )
+    }
+  }
 
   async function handleExportJson() {
     const { getBackupSnapshot } = await import("@/lib/training-db")
@@ -30,7 +85,7 @@ export function SettingsPage() {
     downloadTextFile(
       `training-backup-${new Date().toISOString().slice(0, 10)}.json`,
       JSON.stringify(snapshot, null, 2),
-      "application/json"
+      "application/json",
     )
   }
 
@@ -75,13 +130,17 @@ export function SettingsPage() {
     }
 
     const csv = rows
-      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","))
+      .map((row) =>
+        row
+          .map((value) => `"${String(value).replaceAll('"', '""')}"`)
+          .join(","),
+      )
       .join("\n")
 
     downloadTextFile(
       `training-sets-${new Date().toISOString().slice(0, 10)}.csv`,
       csv,
-      "text/csv;charset=utf-8"
+      "text/csv;charset=utf-8",
     )
   }
 
@@ -90,7 +149,10 @@ export function SettingsPage() {
     const snapshot = await getBackupSnapshot()
 
     const totalSessions = snapshot.sessions.length
-    const totalSets = snapshot.sessions.reduce((sum, session) => sum + session.sets.length, 0)
+    const totalSets = snapshot.sessions.reduce(
+      (sum, session) => sum + session.sets.length,
+      0,
+    )
     const totalReadiness = snapshot.readinessLogs.length
     const totalWeightEntries = snapshot.weightLogs.length
 
@@ -148,7 +210,7 @@ export function SettingsPage() {
                       <td>${entry.session.durationMin} min</td>
                       <td>${entry.sets.length}</td>
                     </tr>
-                  `
+                  `,
                 )
                 .join("")}
             </tbody>
@@ -166,12 +228,98 @@ export function SettingsPage() {
     <section className="grid gap-4 lg:grid-cols-2">
       <Card>
         <CardHeader>
+          <CardTitle className="text-lg">Account</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading session...</p>
+          ) : isAuthenticated ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Signed in as{" "}
+                <span className="font-medium text-foreground">
+                  {user?.email ?? "user"}
+                </span>
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleSignOut()}
+              >
+                Sign out
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                You are in local guest mode.
+              </p>
+              <div className="space-y-2">
+                <Input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+                <Button
+                  type="button"
+                  onClick={() => void handleSignInWithMagicLink()}
+                >
+                  Send magic link
+                </Button>
+              </div>
+            </>
+          )}
+
+          {authStatus ? (
+            <p className="text-sm text-muted-foreground">{authStatus}</p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Sync</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Saved on device:{" "}
+            {pendingChanges > 0 ? "Yes (pending cloud sync)" : "Yes"}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Synced to cloud:{" "}
+            {isAuthenticated ? "Enabled" : "Disabled (not signed in)"}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Last sync:{" "}
+            {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : "Never"}
+          </p>
+          {syncError ? (
+            <p className="text-sm text-destructive">Last error: {syncError}</p>
+          ) : null}
+
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!isAuthenticated || isSyncing}
+            onClick={() => void syncNow()}
+          >
+            {isSyncing ? "Syncing..." : "Sync now"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-lg">Split ativo</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">Atual: {splitLabel}</p>
 
-          <Select value={splitType} onValueChange={(value) => void setSplitType(value as SplitType)}>
+          <Select
+            value={splitType}
+            onValueChange={(value) => void setSplitType(value as SplitType)}
+          >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Selecione o split" />
             </SelectTrigger>
@@ -191,14 +339,37 @@ export function SettingsPage() {
           <Button type="button" onClick={() => void handleExportJson()}>
             Exportar JSON
           </Button>
-          <Button type="button" variant="outline" onClick={() => void handleExportCsv()}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleExportCsv()}
+          >
             Exportar CSV
           </Button>
-          <Button type="button" variant="outline" onClick={() => void handleExportPdf()}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleExportPdf()}
+          >
             Exportar PDF
           </Button>
         </CardContent>
       </Card>
+
+      {storageChecked && isIOS && storagePersisted === false ? (
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-lg">iOS storage notice</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Offline data is best-effort on iOS Safari without persistent
+              storage. Install this app on your home screen for more reliable
+              offline retention.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
     </section>
   )
 }

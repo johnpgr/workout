@@ -75,6 +75,9 @@ export function useAddSessionMutation() {
         queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: RECOMMENDATIONS_QUERY_KEY }),
       ])
+
+      const { scheduleSync } = await import("@/lib/sync")
+      scheduleSync("mutation")
     },
   })
 }
@@ -89,6 +92,9 @@ export function useDeleteSessionMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
+
+      const { scheduleSync } = await import("@/lib/sync")
+      scheduleSync("mutation")
     },
   })
 }
@@ -116,6 +122,9 @@ export function useSetAppSettingMutation() {
         queryClient.invalidateQueries({ queryKey: [...SETTINGS_QUERY_KEY, variables.key] }),
         queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
       ])
+
+      const { scheduleSync } = await import("@/lib/sync")
+      scheduleSync("mutation")
     },
   })
 }
@@ -140,6 +149,9 @@ export function useRecommendationStatusMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: RECOMMENDATIONS_QUERY_KEY })
+
+      const { scheduleSync } = await import("@/lib/sync")
+      scheduleSync("mutation")
     },
   })
 }

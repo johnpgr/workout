@@ -33,6 +33,9 @@ export function useSaveReadinessMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: READINESS_QUERY_KEY })
+
+      const { scheduleSync } = await import("@/lib/sync")
+      scheduleSync("mutation")
     },
   })
 }
