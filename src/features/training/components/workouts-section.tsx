@@ -4,7 +4,13 @@ import { ClockCountdownIcon } from "@phosphor-icons/react"
 import { Controller, useFieldArray, useForm, type Control } from "react-hook-form"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -29,7 +35,7 @@ import type { SplitType } from "@/lib/training-types"
 interface WorkoutsSectionProps {
   defaultDate: string
   splitType: SplitType
-  workouts: WorkoutPlan[]
+  workout: WorkoutPlan | null
   isSaving: boolean
   onSaveSession: (payload: SaveSessionInput) => Promise<void>
 }
@@ -385,22 +391,39 @@ function WorkoutCardForm({
 export function WorkoutsSection({
   defaultDate,
   splitType,
-  workouts,
+  workout,
   isSaving,
   onSaveSession,
 }: WorkoutsSectionProps) {
+  if (!workout) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">Descanso planejado</CardTitle>
+          <CardDescription>
+            O dia selecionado está definido como descanso. Ajuste o plano da
+            semana para registrar um treino neste dia.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Você ainda pode consultar os registros na tabela semanal acima.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <section className="space-y-6">
-      {workouts.map((workout) => (
-        <WorkoutCardForm
-          key={`${workout.type}-${defaultDate}`}
-          defaultDate={defaultDate}
-          splitType={splitType}
-          isSaving={isSaving}
-          workout={workout}
-          onSaveSession={onSaveSession}
-        />
-      ))}
+      <WorkoutCardForm
+        key={`${workout.type}-${defaultDate}`}
+        defaultDate={defaultDate}
+        splitType={splitType}
+        isSaving={isSaving}
+        workout={workout}
+        onSaveSession={onSaveSession}
+      />
     </section>
   )
 }

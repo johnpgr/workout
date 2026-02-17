@@ -8,6 +8,10 @@ export type IntensificationTechnique = "dropset" | "rest-pause" | "superset" | "
 
 export type RecommendationKind = "increase-load" | "increase-reps" | "reduce-intensity" | "consider-deload"
 export type RecommendationStatus = "pending" | "accepted" | "ignored"
+export type AppSettingKey =
+  | "active-split"
+  | "theme-preference"
+  | "week-routine-template-v1"
 
 export interface SyncMetadata {
   id: string
@@ -77,7 +81,7 @@ export interface Recommendation extends SyncMetadata {
 }
 
 export interface AppSetting extends SyncMetadata {
-  key: "active-split" | "theme-preference"
+  key: AppSettingKey
   value: string
 }
 

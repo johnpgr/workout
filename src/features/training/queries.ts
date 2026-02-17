@@ -14,6 +14,7 @@ import {
   type SaveSessionInput,
 } from "@/lib/training-db"
 import type {
+  AppSettingKey,
   RecommendationStatus,
   SplitType,
   WorkoutType,
@@ -93,7 +94,7 @@ export function useDeleteSessionMutation() {
   })
 }
 
-export function useAppSettingQuery(key: "active-split" | "theme-preference") {
+export function useAppSettingQuery(key: AppSettingKey) {
   return useQuery({
     queryKey: [...SETTINGS_QUERY_KEY, key],
     queryFn: async () => getSetting(key),
@@ -104,7 +105,7 @@ export function useSetAppSettingMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (payload: { key: "active-split" | "theme-preference"; value: string }) => {
+    mutationFn: async (payload: { key: AppSettingKey; value: string }) => {
       await setSetting(payload.key, payload.value)
     },
     onSuccess: async (_, variables) => {

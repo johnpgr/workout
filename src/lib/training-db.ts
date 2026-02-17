@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from "uuid"
 import { Temporal } from "@/lib/temporal"
 import type {
   AppSetting,
+  AppSettingKey,
   ExerciseSetLog,
   ReadinessLog,
   Recommendation,
@@ -505,7 +506,7 @@ export async function getAllReadinessLogs(): Promise<ReadinessLog[]> {
   return logs.sort((a, b) => a.date.localeCompare(b.date))
 }
 
-export async function getSetting(key: AppSetting["key"]): Promise<AppSetting | null> {
+export async function getSetting(key: AppSettingKey): Promise<AppSetting | null> {
   const setting = await db.appSettings.where("key").equals(key).first()
   return setting?.deletedAt === null ? setting : null
 }
@@ -514,7 +515,7 @@ export async function getAllSettings(): Promise<AppSetting[]> {
   return db.appSettings.filter((setting) => setting.deletedAt === null).toArray()
 }
 
-export async function setSetting(key: AppSetting["key"], value: string): Promise<string> {
+export async function setSetting(key: AppSettingKey, value: string): Promise<string> {
   const current = await db.appSettings.where("key").equals(key).first()
 
   if (current) {
