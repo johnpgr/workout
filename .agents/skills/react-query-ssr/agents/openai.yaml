@@ -1,0 +1,4 @@
+interface:
+  display_name: "React Query SSR"
+  short_description: "Implement TanStack Query SSR hydration patterns"
+  default_prompt: "Use $react-query-ssr to implement TanStack Query SSR prefetch, hydration, and cache-safe error handling in this route."
