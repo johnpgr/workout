@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { AppLayout } from "src/layouts/app-layout"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { DataExportCard } from "@/features/progress/components/data-export-card"
 import { E1RMChart } from "@/features/progress/components/e1rm-chart"
 import { VolumeChart } from "@/features/progress/components/volume-chart"
 import { VolumeTrendChart } from "@/features/progress/components/volume-trend-chart"
@@ -57,6 +58,8 @@ function ProgressRoute() {
             <WeightTrendChart />
           </div>
         ) : null}
+
+        <DataExportCard />
       </section>
     </AppLayout>
   )
